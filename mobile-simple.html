@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensajero GPS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .card {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .btn-login {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-start {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-stop {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-logout {
+            background: #666;
+            color: white;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        .status {
+            text-align: center;
+            padding: 20px;
+            background: #0f3460;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .badge-active {
+            background: #4CAF50;
+        }
+
+        .badge-inactive {
+            background: #666;
+        }
+
+        .coords {
+            background: #0a0e27;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 15px;
+            word-break: break-all;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .info {
+            background: #ff9800;
+            color: black;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info strong {
+            display: block;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏍️ Tracking GPS</h1>
+
+        <!-- Pantalla de Login -->
+        <div id="loginScreen">
+            <div class="info">
+                <strong>⚠️ ANTES DE EMPEZAR:</strong>
+                1. Activa el GPS de tu teléfono<br>
+                2. Usa Chrome o Safari<br>
+                3. Acepta los permisos cuando aparezcan
+            </div>
+
+            <div class="card">
+                <input type="text" id="nameInput" placeholder="Tu nombre" />
+                <button class="btn-login" onclick="login()">INICIAR</button>
+            </div>
+        </div>
+
+        <!-- Pantalla de Tracking -->
+        <div id="trackingScreen" class="hidden">
+            <div class="status">
+                <h2 id="userName">-</h2>
+                <span id="statusBadge" class="badge badge-inactive">INACTIVO</span>
+                <div id="coordsDisplay" class="coords hidden">
+                    <div>Lat: <span id="lat">-</span></div>
+                    <div>Lng: <span id="lng">-</span></div>
+                    <div>Hora: <span id="time">-</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <button id="btnStart" class="btn-start" onclick="startTracking()">
+                    ▶️ INICIAR TRACKING
+                </button>
+                <button id="btnStop" class="btn-stop hidden" onclick="stopTracking()">
+                    ⏹️ DETENER TRACKING
+                </button>
+                <button class="btn-logout" onclick="logout()">
+                    Cerrar Sesión
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let user = null;
+        let watchId = null;
+
+        function login() {
+            const name = document.getElementById('nameInput').value.trim();
+            
+            if (!name) {
+                alert('Por favor ingresa tu nombre');
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                alert('Tu navegador no soporta GPS');
+                return;
+            }
+
+            user = {
+                id: 'user_' + Date.now(),
+                name: name,
+                active: false,
+                location: null,
+                route: []
+            };
+
+            // Cambiar pantalla
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('trackingScreen').classList.remove('hidden');
+            document.getElementById('userName').textContent = name;
+
+            save();
+            log('Login exitoso: ' + name);
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                alert('GPS no disponible');
+                return;
+            }
+
+            log('Solicitando ubicación...');
+
+            // Intentar obtener ubicación
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    // ÉXITO - tenemos ubicación
+                    log('✅ Ubicación obtenida!');
+                    
+                    user.active = true;
+                    user.location = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+
+                    // Actualizar UI
+                    document.getElementById('btnStart').classList.add('hidden');
+                    document.getElementById('btnStop').classList.remove('hidden');
+                    document.getElementById('statusBadge').textContent = 'ACTIVO';
+                    document.getElementById('statusBadge').className = 'badge badge-active';
+                    document.getElementById('coordsDisplay').classList.remove('hidden');
+
+                    updateCoords(position);
+                    save();
+
+                    // Empezar tracking continuo
+                    watchId = navigator.geolocation.watchPosition(
+                        function(pos) {
+                            user.location = {
+                                lat: pos.coords.latitude,
+                                lng: pos.coords.longitude
+                            };
+                            user.route.push([pos.coords.latitude, pos.coords.longitude]);
+                            updateCoords(pos);
+                            save();
+                            log('📍 Actualizado');
+                        },
+                        function(error) {
+                            log('❌ Error: ' + error.message);
+                            alert('Error al rastrear. Código: ' + error.code);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 20000,
+                            maximumAge: 10000
+                        }
+                    );
+                },
+                function(error) {
+                    // ERROR
+                    log('❌ Error al obtener ubicación');
+                    
+                    let msg = 'No se pudo obtener tu ubicación.\n\n';
+                    
+                    if (error.code === 1) {
+                        msg += 'PERMISOS DENEGADOS\n\n';
+                        msg += 'Ve a configuración del navegador y permite ubicación.\n\n';
+                        msg += 'Chrome: Toca el candado 🔒 → Permisos → Ubicación → Permitir';
+                    } else if (error.code === 2) {
+                        msg += 'GPS NO DISPONIBLE\n\n';
+                        msg += 'Activa el GPS en tu teléfono';
+                    } else {
+                        msg += 'TIMEOUT\n\n';
+                        msg += 'Señal débil. Intenta en exterior';
+                    }
+                    
+                    alert(msg);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 20000,
+                    maximumAge: 0
+                }
+            );
+        }
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            user.active = false;
+
+            document.getElementById('btnStart').classList.remove('hidden');
+            document.getElementById('btnStop').classList.add('hidden');
+            document.getElementById('statusBadge').textContent = 'INACTIVO';
+            document.getElementById('statusBadge').className = 'badge badge-inactive';
+
+            save();
+            log('Tracking detenido');
+        }
+
+        function logout() {
+            if (user.active) {
+                stopTracking();
+            }
+
+            // Eliminar usuario
+            const users = JSON.parse(localStorage.getItem('messengers') || '[]');
+            const filtered = users.filter(u => u.id !== user.id);
+            localStorage.setItem('messengers', JSON.stringify(filtered));
+
+            // Reset
+            user = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('trackingScreen').classList.add('hidden');
+            document.getElementById('nameInput').value = '';
+            document.getElementById('coordsDisplay').classList.add('hidden');
+
+            log('Sesión cerrada');
+        }
+
+        function updateCoords(position) {
+            document.getElementById('lat').textContent = position.coords.latitude.toFixed(6);
+            document.getElementById('lng').textContent = position.coords.longitude.toFixed(6);
+            document.getElementById('time').textContent = new Date().toLocaleTimeString('es-CO');
+        }
+
+        function save() {
+            if (!user) return;
+
+            const users = JSON.parse(localStorage.getItem('messengers') || '[]');
+            const index = users.findIndex(u => u.id === user.id);
+            
+            if (index !== -1) {
+                users[index] = {
+                    id: user.id,
+                    name: user.name,
+                    tracking: user.active,
+                    location: user.location,
+                    route: user.route,
+                    lastUpdate: Date.now()
+                };
+            } else {
+                users.push({
+                    id: user.id,
+                    name: user.name,
+                    tracking: user.active,
+                    location: user.location,
+                    route: user.route,
+                    lastUpdate: Date.now()
+                });
+            }
+            
+            localStorage.setItem('messengers', JSON.stringify(users));
+        }
+
+        function log(msg) {
+            console.log('[APP] ' + msg);
+        }
+
+        // Inicialización
+        log('App cargada');
+        log('GPS disponible: ' + (navigator.geolocation ? 'SI' : 'NO'));
+    </script>
+</body>
+</html>
