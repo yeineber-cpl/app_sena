@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Firebase</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .box {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            margin-bottom: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        pre {
+            background: #2c3e50;
+            color: #2ecc71;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🔥 Test de Firebase</h1>
+        <p>Esta página prueba si Firebase está funcionando correctamente.</p>
+    </div>
+
+    <div class="box">
+        <h3>Estado de Conexión:</h3>
+        <div id="status" class="status info">⏳ Conectando a Firebase...</div>
+    </div>
+
+    <div class="box">
+        <h3>Prueba 1: Escribir Dato</h3>
+        <input type="text" id="testName" placeholder="Escribe tu nombre">
+        <button onclick="escribirDato()">ENVIAR A FIREBASE</button>
+        <div id="writeResult"></div>
+    </div>
+
+    <div class="box">
+        <h3>Prueba 2: Leer Datos</h3>
+        <button onclick="leerDatos()">LEER DESDE FIREBASE</button>
+        <div id="readResult"></div>
+    </div>
+
+    <div class="box">
+        <h3>Consola de Logs:</h3>
+        <pre id="logs">Esperando acciones...</pre>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAF7b2RUPHHPnD9ivi2mWYw28W6MAElnsI",
+            authDomain: "app-prueba-81401.firebaseapp.com",
+            databaseURL: "https://app-prueba-81401-default-rtdb.firebaseio.com",
+            projectId: "app-prueba-81401",
+            storageBucket: "app-prueba-81401.firebasestorage.app",
+            messagingSenderId: "890068669823",
+            appId: "1:890068669823:web:179ef83c1ab38d516d764a"
+        };
+
+        let logs = [];
+
+        function log(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            logs.push(`[${timestamp}] ${msg}`);
+            document.getElementById('logs').textContent = logs.join('\n');
+            console.log(msg);
+        }
+
+        log('Iniciando prueba de Firebase...');
+
+        // Inicializar Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            log('✅ Firebase inicializado correctamente');
+
+            // Verificar conexión
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    document.getElementById('status').className = 'status success';
+                    document.getElementById('status').textContent = '✅ CONECTADO A FIREBASE';
+                    log('✅ Conexión a Firebase establecida');
+                } else {
+                    document.getElementById('status').className = 'status error';
+                    document.getElementById('status').textContent = '❌ DESCONECTADO DE FIREBASE';
+                    log('❌ Sin conexión a Firebase');
+                }
+            });
+
+        } catch (error) {
+            log('❌ ERROR al inicializar Firebase: ' + error.message);
+            document.getElementById('status').className = 'status error';
+            document.getElementById('status').textContent = '❌ ERROR: ' + error.message;
+        }
+
+        function escribirDato() {
+            const nombre = document.getElementById('testName').value.trim();
+            
+            if (!nombre) {
+                alert('Escribe un nombre primero');
+                return;
+            }
+
+            log('Intentando escribir en Firebase...');
+            
+            const db = firebase.database();
+            const testRef = db.ref('test/' + Date.now());
+            
+            testRef.set({
+                nombre: nombre,
+                timestamp: Date.now(),
+                mensaje: 'Hola desde la app de prueba'
+            })
+            .then(() => {
+                log('✅ Dato escrito exitosamente');
+                document.getElementById('writeResult').innerHTML = 
+                    '<div class="status success">✅ Dato guardado en Firebase correctamente</div>';
+            })
+            .catch((error) => {
+                log('❌ Error al escribir: ' + error.message);
+                document.getElementById('writeResult').innerHTML = 
+                    '<div class="status error">❌ Error: ' + error.message + '</div>';
+            });
+        }
+
+        function leerDatos() {
+            log('Intentando leer desde Firebase...');
+            
+            const db = firebase.database();
+            const testRef = db.ref('test');
+            
+            testRef.once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    log('✅ Datos leídos exitosamente');
+                    
+                    if (data) {
+                        let html = '<div class="status success">✅ Datos encontrados:</div>';
+                        html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                        document.getElementById('readResult').innerHTML = html;
+                    } else {
+                        document.getElementById('readResult').innerHTML = 
+                            '<div class="status info">ℹ️ No hay datos todavía. Escribe algo primero.</div>';
+                    }
+                })
+                .catch((error) => {
+                    log('❌ Error al leer: ' + error.message);
+                    document.getElementById('readResult').innerHTML = 
+                        '<div class="status error">❌ Error: ' + error.message + '</div>';
+                });
+        }
+
+        log('Página cargada. Esperando pruebas...');
+    </script>
+</body>
+</html>
