@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admin</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        
+        .header {
+            background: #1a1a2e;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+        }
+        
+        .container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        #map {
+            flex: 1;
+        }
+        
+        .stat {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .stat-number {
+            font-size: 48px;
+            font-weight: bold;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .messenger {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .messenger:hover {
+            background: #e0e0e0;
+            transform: translateX(5px);
+        }
+        
+        .messenger.inactive {
+            border-left-color: #999;
+            opacity: 0.6;
+        }
+        
+        .messenger-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .messenger-status {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-dot.active {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.inactive {
+            background: #999;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+        
+        .connection {
+            background: #4CAF50;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        .connection.disconnected {
+            background: #f44336;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                height: 40vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚚 Panel de Administración</h1>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div id="connection" class="connection">
+                🟢 Conectado a Firebase
+            </div>
+
+            <div class="stat">
+                <div class="stat-number" id="activeCount">0</div>
+                <div class="stat-label">Mensajeros Activos</div>
+            </div>
+
+            <h3 style="margin-bottom: 15px;">Mensajeros:</h3>
+
+            <button onclick="limpiarInactivos()" style="width: 100%; padding: 10px; background: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; font-size: 14px;">
+                🗑️ Limpiar Inactivos
+            </button>
+
+            <div id="messengerList">
+                <div class="no-data">
+                    Esperando mensajeros...<br><br>
+                    Abre <strong>app-movil.html</strong> en teléfonos
+                </div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAF7b2RUPHHPnD9ivi2mWYw28W6MAElnsI",
+            authDomain: "app-prueba-81401.firebaseapp.com",
+            databaseURL: "https://app-prueba-81401-default-rtdb.firebaseio.com",
+            projectId: "app-prueba-81401",
+            storageBucket: "app-prueba-81401.firebasestorage.app",
+            messagingSenderId: "890068669823",
+            appId: "1:890068669823:web:179ef83c1ab38d516d764a"
+        };
+
+        // Mapa
+        const map = L.map('map').setView([10.9639, -74.7964], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
+
+        const markers = {};
+        let mensajeros = {};
+
+        // Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        console.log('✅ Panel iniciado');
+
+        // Estado de conexión
+        db.ref('.info/connected').on('value', (snap) => {
+            const conn = document.getElementById('connection');
+            if (snap.val() === true) {
+                conn.className = 'connection';
+                conn.textContent = '🟢 Conectado a Firebase';
+                console.log('✅ Conectado a Firebase');
+            } else {
+                conn.className = 'connection disconnected';
+                conn.textContent = '🔴 Desconectado';
+                console.log('❌ Desconectado');
+            }
+        });
+
+        // Escuchar cambios en tiempo real
+        db.ref('mensajeros').on('value', (snapshot) => {
+            mensajeros = snapshot.val() || {};
+            actualizar();
+            console.log('📡 Datos actualizados:', Object.keys(mensajeros).length, 'mensajeros');
+        });
+
+        function actualizar() {
+            const lista = Object.values(mensajeros);
+            const activos = lista.filter(m => m.activo);
+            
+            // Contador
+            document.getElementById('activeCount').textContent = activos.length;
+
+            // Lista
+            const listContainer = document.getElementById('messengerList');
+            
+            if (lista.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="no-data">
+                        No hay mensajeros conectados.<br><br>
+                        Abre <strong>app-movil.html</strong> en teléfonos
+                    </div>
+                `;
+            } else {
+                listContainer.innerHTML = lista.map(m => `
+                    <div class="messenger ${m.activo ? 'active' : 'inactive'}" onclick="centrar('${m.id}')">
+                        <div class="messenger-name">${m.nombre}</div>
+                        <div class="messenger-status">
+                            <span class="status-dot ${m.activo ? 'active' : 'inactive'}"></span>
+                            ${m.activo ? 'En ruta' : 'Inactivo'}
+                            ${m.timestamp ? ' - ' + new Date(m.timestamp).toLocaleTimeString('es-CO') : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Mapa
+            actualizarMapa(lista);
+        }
+
+        function actualizarMapa(lista) {
+            // Limpiar marcadores viejos
+            Object.keys(markers).forEach(id => {
+                if (!lista.find(m => m.id === id)) {
+                    map.removeLayer(markers[id]);
+                    delete markers[id];
+                }
+            });
+
+            // Actualizar/crear marcadores
+            lista.forEach(m => {
+                if (m.lat && m.lng) {
+                    const color = m.activo ? '#4CAF50' : '#999';
+
+                    if (markers[m.id]) {
+                        markers[m.id].setLatLng([m.lat, m.lng]);
+                    } else {
+                        const icon = L.divIcon({
+                            html: `<div style="background: ${color}; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 16px;">🏍️</div>`,
+                            className: '',
+                            iconSize: [30, 30]
+                        });
+
+                        markers[m.id] = L.marker([m.lat, m.lng], { icon })
+                            .bindPopup(`<b>${m.nombre}</b><br>${m.activo ? '🟢 Activo' : '⚪ Inactivo'}`)
+                            .addTo(map);
+                    }
+                }
+            });
+
+            // Auto-centrar
+            const activos = lista.filter(m => m.activo && m.lat && m.lng);
+            if (activos.length > 0) {
+                const bounds = L.latLngBounds(activos.map(m => [m.lat, m.lng]));
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            }
+        }
+
+        function centrar(id) {
+            const m = mensajeros[id];
+            if (m && m.lat && m.lng) {
+                map.setView([m.lat, m.lng], 16);
+                markers[id].openPopup();
+            }
+        }
+
+        function limpiarInactivos() {
+            const lista = Object.values(mensajeros);
+            const inactivos = lista.filter(m => !m.activo);
+            
+            if (inactivos.length === 0) {
+                alert('No hay mensajeros inactivos para limpiar');
+                return;
+            }
+
+            if (confirm(`¿Eliminar ${inactivos.length} mensajero(s) inactivo(s)?`)) {
+                inactivos.forEach(m => {
+                    db.ref('mensajeros/' + m.id).remove();
+                });
+                console.log(`🗑️ Eliminados ${inactivos.length} mensajeros inactivos`);
+                alert(`✅ ${inactivos.length} mensajero(s) eliminado(s)`);
+            }
+        }
+
+        console.log('Panel listo');
+    </script>
+</body>
+</html>
